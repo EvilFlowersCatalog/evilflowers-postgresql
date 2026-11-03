@@ -77,7 +77,7 @@ docker compose -f compose/local/compose.yml up --build
 GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)):
 
 - Every major × {amd64 on `ubuntu-24.04`, arm64 on `ubuntu-24.04-arm`} builds natively, with no QEMU.
-- Each build is smoke-tested and Trivy-scanned (fails on fixable CRITICAL) **before** anything is pushed.
+- Each build is smoke-tested and Trivy-scanned (fails on fixable CRITICAL; reviewed, expiring exceptions live in `.trivyignore.yaml`) **before** anything is pushed.
 - On `main`, the weekly schedule and manual dispatch: push by digest, build a multi-arch manifest, attach SBOM + provenance, sign with cosign (keyless) and create a GitHub release.
 - [`k8s-compat.yml`](.github/workflows/k8s-compat.yml) runs the image under CloudNativePG on kind.
 - [Renovate](renovate.json) opens PRs for PostgreSQL minors, base digests, pgvector and CI tooling.

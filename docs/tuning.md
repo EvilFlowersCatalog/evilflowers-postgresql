@@ -27,7 +27,7 @@ Start from the memory **budget** you give PostgreSQL (the container `mem_limit`)
 | `autovacuum_work_mem` | maintenance_work_mem / autovacuum_max_workers | 256 MB |
 | `max_parallel_workers` | vCPUs − 2 | 6 |
 | `max_parallel_maintenance_workers` | vCPUs / 2 | 4 |
-| `io_workers` (18+) | 3 by default; raise if `pg_aios` shows a backlog | 3 |
+| `io_workers` (18) / `io_min_workers` (19+) | 3 by default; raise if `pg_aios` shows a backlog. 19 removed `io_workers`: the pool scales between `io_min_workers` and `io_max_workers`, and a leftover `io_workers` line stops the server from starting | 3 |
 | `max_wal_size` | enough for one `checkpoint_timeout` of peak WAL; check `log_checkpoints` for "requested" checkpoints | 4 GB |
 | `max_connections` | sum of pooler server pools + direct clients + 20 % | 200 |
 

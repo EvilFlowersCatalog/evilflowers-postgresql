@@ -113,12 +113,16 @@ jobs:
       - name: Vulnerability scan (fail on fixable CRITICAL)
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$HOME/.cache/trivy:/root/.cache/trivy" "$TRIVY_IMAGE" image \
-            --scanners vuln --ignore-unfixed --severity CRITICAL --exit-code 1 \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD/.trivyignore.yaml:/.trivyignore.yaml:ro" "$TRIVY_IMAGE" image \
+            --scanners vuln --ignore-unfixed --ignorefile /.trivyignore.yaml \
+            --severity CRITICAL --exit-code 1 \
             evilflowers-postgresql:test
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$HOME/.cache/trivy:/root/.cache/trivy" "$TRIVY_IMAGE" image \
-            --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL --format table \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD/.trivyignore.yaml:/.trivyignore.yaml:ro" "$TRIVY_IMAGE" image \
+            --scanners vuln --ignore-unfixed --ignorefile /.trivyignore.yaml \
+            --severity HIGH,CRITICAL --format table \
             evilflowers-postgresql:test
 
       - name: Log in to GHCR

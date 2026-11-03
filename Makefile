@@ -24,8 +24,10 @@ test: build
 	tests/smoke.sh $(TAG) $(PGVECTOR)
 
 scan: build
-	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $(TRIVY) image \
-		--scanners vuln --ignore-unfixed --severity HIGH,CRITICAL $(TAG)
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(CURDIR)/.trivyignore.yaml:/.trivyignore.yaml:ro" $(TRIVY) image \
+		--scanners vuln --ignore-unfixed --ignorefile /.trivyignore.yaml \
+		--severity HIGH,CRITICAL $(TAG)
 
 lint:
 	docker run --rm -i -v "$(CURDIR)/.hadolint.yaml:/.config/hadolint.yaml:ro" hadolint/hadolint:v2.15.1 < Dockerfile

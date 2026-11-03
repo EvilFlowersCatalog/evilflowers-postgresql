@@ -1,0 +1,13 @@
+# Accepted Trivy findings. Each entry is scoped to one file and expires, so it
+# is re-reviewed instead of silently living forever.
+vulnerabilities:
+  - id: CVE-2025-68121
+    paths:
+      - usr/local/bin/gosu
+    statement: >-
+      Go stdlib crypto/tls flaw in the gosu binary from the official postgres
+      base image. gosu only drops privileges and never opens TLS connections,
+      so the code is unreachable. Upstream gosu 1.20 is still built on Go
+      1.24.6 and its SECURITY.md declines rebuilds for unreachable stdlib CVEs.
+      Drop this entry once the base image ships a gosu built on Go >= 1.24.13.
+    expired_at: 2027-02-01
