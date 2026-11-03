@@ -100,7 +100,7 @@ LABEL org.opencontainers.image.title="evilflowers-postgresql" \
 # listens only on the Unix socket, so the container reports healthy only once
 # initialisation has finished.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
-  CMD pg_isready -h 127.0.0.1 -p 5432 -q || exit 1
+  CMD ["sh", "-c", "pg_isready -h 127.0.0.1 -p 5432 -q || exit 1"]
 
 STOPSIGNAL SIGINT
 CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
