@@ -1,0 +1,15 @@
+# Maps PostgreSQL majors to EvilFlowers images. Clusters reference the catalog
+# by major, so a minor upgrade means editing one line here; CNPG then performs
+# a rolling restart (replicas first, then switchover).
+#
+# Pin the immutable "<minor>-<stamp>" tags (or digests) from the GitHub release.
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  name: evilflowers-postgresql
+spec:
+  images:
+    - major: 17
+      image: ghcr.io/evilflowerscatalog/evilflowers-postgresql:17
+    - major: 18
+      image: ghcr.io/evilflowerscatalog/evilflowers-postgresql:18

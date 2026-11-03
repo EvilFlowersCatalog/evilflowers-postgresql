@@ -1,0 +1,90 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":semanticCommitsDisabled"],
+  "labels": ["dependencies"],
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "prHourlyLimit": 0,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Base images in versions.json (tag + digest)",
+      "managerFilePatterns": ["/^versions\\.json$/"],
+      "matchStrings": [
+        "\"base\": \"(?<depName>[a-z0-9./-]+):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "pgvector release in versions.json",
+      "managerFilePatterns": ["/^versions\\.json$/"],
+      "matchStrings": ["\"pgvector\": \"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "pgvector/pgvector",
+      "datasourceTemplate": "github-tags",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Tool images run with docker in workflows",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": ["(?<depName>aquasec/trivy|hadolint/hadolint|rhysd/actionlint):(?<currentValue>v?[0-9][^\\s\"]*)"],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "CloudNativePG operator used by the k8s compatibility test",
+      "managerFilePatterns": ["/^\\.github/workflows/k8s-compat\\.yml$/"],
+      "matchStrings": ["CNPG_VERSION: (?<currentValue>[0-9.]+)"],
+      "depNameTemplate": "cloudnative-pg/cloudnative-pg",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Never move a PostgreSQL major automatically; new majors are a human decision (docs/release-cycle.md)",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["postgres"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "PostgreSQL minor releases and base digest refreshes: one PR per major, labelled for quick review",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["postgres"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "addLabels": ["postgresql"],
+      "automerge": false
+    },
+    {
+      "description": "Preview majors (19rc1, 19beta*) are bumped by hand when the next pre-release or GA lands",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["postgres"],
+      "matchCurrentValue": "/^[0-9]+(beta|rc)[0-9]+-/",
+      "enabled": false
+    },
+    {
+      "description": "Digest-only base refreshes are routine (weekly rebuild covers them too); automerge once CI passes",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["postgres"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "CI tooling: group and automerge minor/patch",
+      "matchManagers": ["github-actions", "custom.regex"],
+      "matchPackageNames": ["!postgres", "!pgvector/pgvector"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "CI tooling",
+      "automerge": true
+    },
+    {
+      "description": "pgvector: review release notes (index format changes need REINDEX)",
+      "matchPackageNames": ["pgvector/pgvector"],
+      "addLabels": ["pgvector"],
+      "automerge": false
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "$comment": "Single source of truth for the build matrix. Renovate bumps base digests and pgvector; humans change status/default.",
+  "default": "18",
+  "pgvector": "0.8.7",
+  "extensions": ["cron", "repack", "hypopg", "pgaudit", "partman"],
+  "majors": {
+    "17": {
+      "base": "postgres:17.11-trixie@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1",
+      "status": "maintenance",
+      "eol": "2029-11-08"
+    },
+    "18": {
+      "base": "postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81",
+      "status": "stable",
+      "eol": "2030-11-14"
+    },
+    "19": {
+      "base": "postgres:19rc1-trixie@sha256:a4193f06aaf4cf10140225461dea49cf0d65a885221a07a90a9d410cdf469d7b",
+      "status": "preview",
+      "eol": "2031-11"
+    }
+  }
+}

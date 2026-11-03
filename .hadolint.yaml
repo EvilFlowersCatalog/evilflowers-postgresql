@@ -1,0 +1,6 @@
+failure-threshold: warning
+ignored:
+  # PGDG keeps only the newest build of each package, so pinned apt versions
+  # break as soon as upstream publishes. Installed versions are recorded in
+  # /usr/share/evilflowers/manifest.txt instead.
+  - DL3008

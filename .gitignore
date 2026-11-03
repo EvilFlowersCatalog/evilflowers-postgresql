@@ -1,0 +1,5 @@
+.idea/
+.mcp.json
+.venv/
+.claude/settings.local.json
+compose/**/.env

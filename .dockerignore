@@ -1,0 +1,4 @@
+# Build context = only what the Dockerfile copies.
+*
+!conf
+!initdb

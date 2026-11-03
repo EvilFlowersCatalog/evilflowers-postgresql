@@ -1,0 +1,79 @@
+name: k8s-compat
+
+# Proves the image runs under CloudNativePG: builds the default major, loads it
+# into a kind cluster, deploys a 2-instance Cluster and checks replication and
+# extensions. Runs weekly and on changes that could break it.
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - versions.json
+      - k8s/**
+      - .github/workflows/k8s-compat.yml
+  schedule:
+    - cron: "47 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CNPG_VERSION: 1.30.1
+
+jobs:
+  cnpg:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build default major
+        run: |
+          major="$(jq -r .default versions.json)"
+          docker build \
+            --build-arg BASE_IMAGE="$(jq -r --arg m "$major" '.majors[$m].base' versions.json)" \
+            --build-arg PGVECTOR_VERSION="$(jq -r .pgvector versions.json)" \
+            --build-arg EXTENSIONS="$(jq -r '.extensions | join(" ")' versions.json)" \
+            -t evilflowers-postgresql:compat .
+
+      - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          version: v0.33.0
+          cluster_name: compat
+
+      - name: Load image into kind
+        run: kind load docker-image evilflowers-postgresql:compat --name compat
+
+      - name: Install CloudNativePG
+        run: |
+          kubectl apply --server-side -f \
+            "https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-${CNPG_VERSION%.*}/releases/cnpg-${CNPG_VERSION}.yaml"
+          kubectl -n cnpg-system rollout status deployment/cnpg-controller-manager --timeout=180s
+
+      - name: Deploy cluster
+        run: |
+          sed 's|imageName: IMAGE|imageName: evilflowers-postgresql:compat|' k8s/cnpg/test/cluster.yaml | kubectl apply -f -
+          kubectl wait cluster/compat --for=condition=Ready --timeout=600s
+
+      - name: Check extensions and replication
+        run: |
+          primary="$(kubectl get cluster compat -o jsonpath='{.status.currentPrimary}')"
+          kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d app -c "
+            SELECT extversion FROM pg_extension WHERE extname = 'vector';
+            CREATE TABLE t (v vector(3));
+            INSERT INTO t VALUES ('[1,2,3]');
+            CREATE INDEX ON t USING hnsw (v vector_l2_ops);
+            SELECT v <-> '[1,2,4]' FROM t;"
+          kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
+            "SELECT count(*) FROM pg_stat_replication" | grep -qx 1
+          kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
+            "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'" | grep -qx 1
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get cluster,pods -A -o wide || true
+          kubectl describe cluster compat || true
+          kubectl logs -l cnpg.io/cluster=compat --all-containers --tail=200 || true
+          kubectl -n cnpg-system logs deployment/cnpg-controller-manager --tail=200 || true

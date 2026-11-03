@@ -1,0 +1,88 @@
+# CloudNativePG cluster running the EvilFlowers image.
+# Operator: https://cloudnative-pg.io (Apache-2.0). Tested in CI against
+# CNPG 1.30 on kind (.github/workflows/k8s-compat.yml).
+#
+# The official Docker image runs postgres as uid/gid 999, while CNPG's own images
+# use 26, hence postgresUID/postgresGID below.
+#
+# Image-baked postgresql.conf is NOT used here: CNPG generates its own config from
+# spec.postgresql. Keep these parameters in step with conf/postgresql.conf and the
+# host profile you are replacing (compose/production/50-host.conf).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: evilflowers-db
+spec:
+  instances: 2
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: evilflowers-postgresql
+    major: 18
+  postgresUID: 999
+  postgresGID: 999
+
+  storage:
+    size: 100Gi
+  walStorage:
+    size: 20Gi
+
+  resources:
+    requests:
+      memory: 8Gi
+      cpu: "2"
+    limits:
+      memory: 10Gi
+
+  bootstrap:
+    initdb:
+      database: evilflowers
+      owner: evilflowers
+      localeProvider: builtin
+      builtinLocale: C.UTF-8
+      dataChecksums: true
+      postInitTemplateSQL:
+        - CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS pg_cron;
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector;
+
+  postgresql:
+    # CNPG adds pg_stat_statements, auto_explain and pgaudit to
+    # shared_preload_libraries automatically when their parameters are set.
+    shared_preload_libraries:
+      - pg_cron
+    parameters:
+      max_connections: "200"
+      shared_buffers: 4GB
+      effective_cache_size: 12GB
+      work_mem: 16MB
+      maintenance_work_mem: 1GB
+      autovacuum_work_mem: 256MB
+      random_page_cost: "1.1"
+      effective_io_concurrency: "200"
+      jit: "off"
+      io_method: worker
+      io_workers: "3"
+      max_parallel_workers: "6"
+      max_parallel_maintenance_workers: "4"
+      wal_compression: zstd
+      max_wal_size: 4GB
+      checkpoint_timeout: 15min
+      autovacuum_vacuum_scale_factor: "0.05"
+      autovacuum_analyze_scale_factor: "0.02"
+      log_min_duration_statement: 1s
+      log_lock_waits: "on"
+      track_io_timing: "on"
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: top
+      auto_explain.log_min_duration: 5s
+      pgaudit.log: none
+      cron.database_name: postgres
+      cron.use_background_workers: "on"
+
+  monitoring:
+    enablePodMonitor: false   # set true when prometheus-operator is installed
+
+  # Backups: use the Barman Cloud plugin to MinIO / S3 (see docs/kubernetes.md).

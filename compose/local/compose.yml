@@ -1,0 +1,25 @@
+# Local development: builds the image from this repository.
+#   docker compose -f compose/local/compose.yml up --build
+#   psql postgresql://postgres:postgres@localhost:5432/evilflowers
+name: evilflowers-postgresql-local
+
+services:
+  db:
+    # Uses the Dockerfile's default build args. `make build` / `make test` read
+    # versions.json and are the canonical way to build a specific major.
+    build:
+      context: ../..
+    image: evilflowers-postgresql:local
+    shm_size: 512m
+    stop_grace_period: 1m
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: evilflowers
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+volumes:
+  pgdata:

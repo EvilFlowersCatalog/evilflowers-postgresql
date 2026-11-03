@@ -1,0 +1,53 @@
+# Production-style service definition for a single Docker host.
+#
+#   cp .env.example .env            # fill in the values
+#   cp 50-host.conf postgresql/     # and size it for your host (docs/tuning.md)
+#   docker compose up -d
+#
+# Upgrading an existing postgres:17 deployment? Read docs/upgrade-17-to-18.md
+# first: PostgreSQL 18 uses a new volume path and the data must be migrated.
+name: postgresql
+
+services:
+  db:
+    # Pin the immutable tag from the GitHub release (or a digest); never ":latest".
+    image: ghcr.io/evilflowerscatalog/evilflowers-postgresql:${POSTGRES_IMAGE_TAG:?set POSTGRES_IMAGE_TAG, e.g. 18.6-202611031200}
+    restart: unless-stopped
+    # Parallel query and parallel HNSW builds allocate dynamic shared memory in
+    # /dev/shm; Docker's default of 64 MB fails those with "could not resize
+    # shared memory segment".
+    shm_size: 1g
+    # Give the shutdown checkpoint time to finish; Docker's 10 s default ends in
+    # SIGKILL and crash recovery on the next start.
+    stop_grace_period: 2m
+    mem_limit: ${POSTGRES_MEM_LIMIT:-10g}
+    # If the host runs out of memory (especially without swap), prefer the kernel
+    # to kill something other than the postmaster, which would restart every database.
+    oom_score_adj: -500
+    volumes:
+      - postgresql18_data:/var/lib/postgresql
+      - ./postgresql/50-host.conf:/etc/postgresql/conf.d/50-host.conf:ro
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Only used when the volume is empty. Builtin C.UTF-8 collation does not
+      # depend on glibc, so base-image upgrades never silently corrupt text
+      # indexes. Use an ICU collation (e.g. COLLATE "sk-x-icu") where users see
+      # alphabetically sorted text.
+      POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8
+    # Publish only if clients outside Docker need it; prefer a private address.
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - backend
+
+networks:
+  backend: {}
+  # Joining an existing shared network instead:
+  # backend:
+  #   name: <your-network>
+  #   external: true
+
+volumes:
+  postgresql18_data:

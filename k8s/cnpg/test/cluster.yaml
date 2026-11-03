@@ -1,0 +1,35 @@
+# Minimal cluster used by .github/workflows/k8s-compat.yml on kind.
+# The workflow substitutes IMAGE with a locally built image.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: compat
+spec:
+  instances: 2
+  imageName: IMAGE
+  imagePullPolicy: Never
+  postgresUID: 999
+  postgresGID: 999
+  storage:
+    size: 1Gi
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+      localeProvider: builtin
+      builtinLocale: C.UTF-8
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS pg_cron;
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector;
+  postgresql:
+    shared_preload_libraries:
+      - pg_cron
+    parameters:
+      shared_buffers: 128MB
+      io_method: worker
+      jit: "off"
+      pg_stat_statements.max: "1000"
+      pgaudit.log: none
+      cron.database_name: postgres
+      cron.use_background_workers: "on"
