@@ -2,14 +2,14 @@ name: build
 
 # Trunk-based releases:
 #   pull_request  -> lint, build and smoke-test every major on amd64 + arm64 (no push)
-#   push to main  -> same, then publish multi-arch images, sign them and cut a GitHub release
+#   push to master  -> same, then publish multi-arch images, sign them and cut a GitHub release
 #   schedule      -> weekly rebuild on the same base tags to pick up Debian security fixes
 #   dispatch      -> manual rebuild (e.g. after an out-of-band PostgreSQL security release)
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
   schedule:
     - cron: "17 4 * * 1"   # Mondays 04:17 UTC
   workflow_dispatch:
@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+  PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/master' }}
   TRIVY_IMAGE: aquasec/trivy:0.76.1
 
 jobs:
@@ -168,7 +168,7 @@ jobs:
   publish:
     name: publish ${{ matrix.major }}
     needs: [matrix, build]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     continue-on-error: ${{ matrix.status == 'preview' }}
     permissions:
@@ -226,7 +226,7 @@ jobs:
 
   release:
     needs: [matrix, publish]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
