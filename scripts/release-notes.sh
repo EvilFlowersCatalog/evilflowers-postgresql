@@ -34,6 +34,7 @@ echo
 echo "### Contents"
 echo
 echo "- pgvector $(jq -r '.pgvector' versions.json) (built from source)"
+echo "- ParadeDB pg_search $(jq -r '.pg_search' versions.json) (upstream release package, AGPL-3.0); not in: $(jq -r '[.majors | to_entries[] | select(.value.pg_search == false) | .key] | if length == 0 then "none" else join(", ") end' versions.json)"
 echo "- PGDG extensions: $(jq -r '.extensions | map("postgresql-<major>-" + .) | join(", ")' versions.json)"
 echo "- Base images:"
 jq -r '.majors | to_entries[] | "  - \(.key): `\(.value.base)`"' versions.json

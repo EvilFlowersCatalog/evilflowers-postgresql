@@ -26,6 +26,15 @@
     },
     {
       "customType": "regex",
+      "description": "ParadeDB pg_search release in versions.json",
+      "managerFilePatterns": ["/^versions\\.json$/"],
+      "matchStrings": ["\"pg_search\": \"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "paradedb/paradedb",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
       "description": "Tool images run with docker in workflows",
       "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
       "matchStrings": ["(?<depName>aquasec/trivy|hadolint/hadolint|rhysd/actionlint):(?<currentValue>v?[0-9][^\\s\"]*)"],
@@ -75,7 +84,7 @@
     {
       "description": "CI tooling: group and automerge minor/patch",
       "matchManagers": ["github-actions", "custom.regex"],
-      "matchPackageNames": ["!postgres", "!pgvector/pgvector"],
+      "matchPackageNames": ["!postgres", "!pgvector/pgvector", "!paradedb/paradedb"],
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "groupName": "CI tooling",
       "automerge": true
@@ -84,6 +93,12 @@
       "description": "pgvector: review release notes (index format changes need REINDEX)",
       "matchPackageNames": ["pgvector/pgvector"],
       "addLabels": ["pgvector"],
+      "automerge": false
+    },
+    {
+      "description": "pg_search: review release notes (BM25 index format and query syntax change between releases; a bump may need REINDEX)",
+      "matchPackageNames": ["paradedb/paradedb"],
+      "addLabels": ["pg_search"],
       "automerge": false
     }
   ]

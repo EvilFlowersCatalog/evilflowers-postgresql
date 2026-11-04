@@ -22,9 +22,11 @@ spec:
         - CREATE EXTENSION IF NOT EXISTS pg_cron;
       postInitApplicationSQL:
         - CREATE EXTENSION IF NOT EXISTS vector;
+        - CREATE EXTENSION IF NOT EXISTS pg_search;
   postgresql:
     shared_preload_libraries:
       - pg_cron
+      - pg_search
     parameters:
       shared_buffers: 128MB
       io_method: worker

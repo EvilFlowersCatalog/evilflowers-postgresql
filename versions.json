@@ -1,7 +1,8 @@
 {
-  "$comment": "Single source of truth for the build matrix. Renovate bumps base digests and pgvector; humans change status/default.",
+  "$comment": "Single source of truth for the build matrix. Renovate bumps base digests, pgvector and pg_search; humans change status/default. A major sets \"pg_search\": false while ParadeDB ships no package for it.",
   "default": "18",
   "pgvector": "0.8.7",
+  "pg_search": "0.26.4",
   "extensions": ["cron", "repack", "hypopg", "pgaudit", "partman"],
   "majors": {
     "17": {
@@ -17,7 +18,8 @@
     "19": {
       "base": "postgres:19rc1-trixie@sha256:a4193f06aaf4cf10140225461dea49cf0d65a885221a07a90a9d410cdf469d7b",
       "status": "preview",
-      "eol": "2031-11"
+      "eol": "2031-11",
+      "pg_search": false
     }
   }
 }

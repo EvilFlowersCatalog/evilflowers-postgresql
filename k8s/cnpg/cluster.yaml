@@ -47,12 +47,16 @@ spec:
         - CREATE EXTENSION IF NOT EXISTS pg_cron;
       postInitApplicationSQL:
         - CREATE EXTENSION IF NOT EXISTS vector;
+        - CREATE EXTENSION IF NOT EXISTS pg_search;
 
   postgresql:
     # CNPG adds pg_stat_statements, auto_explain and pgaudit to
     # shared_preload_libraries automatically when their parameters are set.
+    # pg_search must be preloaded; drop it for a major built without it
+    # ("pg_search": false in versions.json).
     shared_preload_libraries:
       - pg_cron
+      - pg_search
     parameters:
       max_connections: "200"
       shared_buffers: 4GB

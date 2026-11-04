@@ -34,6 +34,7 @@ jobs:
           docker build \
             --build-arg BASE_IMAGE="$(jq -r --arg m "$major" '.majors[$m].base' versions.json)" \
             --build-arg PGVECTOR_VERSION="$(jq -r .pgvector versions.json)" \
+            --build-arg PG_SEARCH_VERSION="$(jq -r --arg m "$major" 'if .majors[$m].pg_search == false then "" else .pg_search end' versions.json)" \
             --build-arg EXTENSIONS="$(jq -r '.extensions | join(" ")' versions.json)" \
             -t evilflowers-postgresql:compat .
 
@@ -64,7 +65,12 @@ jobs:
             CREATE TABLE t (v vector(3));
             INSERT INTO t VALUES ('[1,2,3]');
             CREATE INDEX ON t USING hnsw (v vector_l2_ops);
-            SELECT v <-> '[1,2,4]' FROM t;"
+            SELECT v <-> '[1,2,4]' FROM t;
+            SELECT extversion FROM pg_extension WHERE extname = 'pg_search';
+            CREATE TABLE docs (id int PRIMARY KEY, body text);
+            INSERT INTO docs VALUES (1, 'pgvector and BM25'), (2, 'replication');
+            CREATE INDEX ON docs USING bm25 (id, body);
+            SELECT id, pdb.score(id) FROM docs WHERE body ||| 'bm25';"
           kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
             "SELECT count(*) FROM pg_stat_replication" | grep -qx 1
           kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \

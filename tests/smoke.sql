@@ -1,5 +1,6 @@
 -- Smoke test executed by tests/smoke.sh inside the container.
 -- Any error aborts the run (psql -v ON_ERROR_STOP=1).
+-- smoke.sh sets :pg_search to 1 when the image ships pg_search, else 0.
 
 \echo '== server'
 SELECT version();
@@ -17,6 +18,14 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
+\if :pg_search
+SELECT position('pg_search' IN current_setting('shared_preload_libraries')) > 0 AS pg_search_preloaded \gset
+\if :pg_search_preloaded
+\else
+\echo 'pg_search is not preloaded'
+SELECT 1/0;
+\endif
+\endif
 
 \echo '== initdb hook created extensions'
 SELECT extname, extversion FROM pg_extension ORDER BY extname;
@@ -72,6 +81,49 @@ RESET enable_seqscan;
 
 \echo '== pg_trgm + unaccent'
 SELECT similarity(unaccent('Žltý kôň'), 'Zlty kon') > 0.5 AS trgm_ok;
+
+\if :pg_search
+\echo '== pg_search: BM25 index, ranked query, hybrid with pgvector'
+CREATE EXTENSION pg_search;
+CREATE TABLE docs (id int PRIMARY KEY, body text, embedding vector(3));
+INSERT INTO docs VALUES
+  (1, 'Žltý kôň skáče cez plot', '[1,0,0]'),
+  (2, 'Kôň, kôň a ešte raz kôň', '[0,1,0]'),
+  (3, 'Vektorové vyhľadávanie v PostgreSQL', '[0,0,1]');
+INSERT INTO docs SELECT i, 'filler document ' || i, '[0.5,0.5,0.5]' FROM generate_series(4, 500) AS i;
+CREATE INDEX docs_bm25_idx ON docs USING bm25 (id, body);
+SET enable_seqscan = off;
+DO $$
+DECLARE
+  line text;
+  plan text := '';
+BEGIN
+  FOR line IN EXECUTE 'EXPLAIN SELECT id FROM docs WHERE body ||| ''kôň''' LOOP
+    plan := plan || line || E'\n';
+  END LOOP;
+  IF plan NOT LIKE '%docs_bm25_idx%' THEN
+    RAISE EXCEPTION 'BM25 index not used: %', plan;
+  END IF;
+END $$;
+RESET enable_seqscan;
+-- BM25: the document repeating the term ranks first; filler never matches.
+SELECT id, pdb.score(id) AS score FROM docs WHERE body ||| 'kôň' ORDER BY score DESC;
+DO $$
+BEGIN
+  IF ARRAY(SELECT id FROM docs WHERE body ||| 'kôň' ORDER BY pdb.score(id) DESC) <> ARRAY[2, 1] THEN
+    RAISE EXCEPTION 'unexpected BM25 ranking';
+  END IF;
+END $$;
+-- Reciprocal rank fusion of the lexical and dense branches, as one query.
+WITH lexical AS (
+  SELECT id, rank() OVER (ORDER BY pdb.score(id) DESC) AS r FROM docs WHERE body ||| 'kôň' LIMIT 20
+), dense AS (
+  SELECT id, rank() OVER (ORDER BY embedding <=> '[1,0,0]') AS r FROM docs ORDER BY embedding <=> '[1,0,0]' LIMIT 20
+)
+SELECT id, sum(1.0 / (60 + r)) AS rrf
+FROM (SELECT * FROM lexical UNION ALL SELECT * FROM dense) AS fused
+GROUP BY id ORDER BY rrf DESC LIMIT 3;
+\endif
 
 \echo '== hypopg'
 SELECT count(*) = 1 AS hypopg_ok FROM hypopg_create_index('CREATE INDEX ON items (id)');

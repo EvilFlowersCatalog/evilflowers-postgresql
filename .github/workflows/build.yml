@@ -51,9 +51,10 @@ jobs:
       - id: m
         run: |
           {
-            echo "builds=$(jq -c '[.majors | to_entries[] | .key as $m | .value as $v
+            echo "builds=$(jq -c '.pg_search as $s | [.majors | to_entries[] | .key as $m | .value as $v
               | ({arch: "amd64", runner: "ubuntu-24.04"}, {arch: "arm64", runner: "ubuntu-24.04-arm"})
-              | {major: $m, base: $v.base, status: $v.status, arch, runner}]' versions.json)"
+              | {major: $m, base: $v.base, status: $v.status, arch, runner,
+                 pg_search: (if $v.pg_search == false then "" else $s end)}]' versions.json)"
             echo "majors=$(jq -c '[.majors | to_entries[] | {major: .key, status: .value.status}]' versions.json)"
             echo "stamp=$(date -u +%Y%m%d%H%M)"
             echo "image=ghcr.io/${GITHUB_REPOSITORY,,}"
@@ -100,6 +101,7 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
             PGVECTOR_VERSION=${{ steps.args.outputs.pgvector }}
+            PG_SEARCH_VERSION=${{ matrix.pg_search }}
             EXTENSIONS=${{ steps.args.outputs.extensions }}
             VERSION=${{ matrix.major }}-${{ needs.matrix.outputs.stamp }}
             REVISION=${{ github.sha }}
@@ -108,7 +110,7 @@ jobs:
           cache-to: type=gha,scope=${{ env.CACHE_SCOPE }},mode=max
 
       - name: Smoke test
-        run: tests/smoke.sh evilflowers-postgresql:test "${{ steps.args.outputs.pgvector }}"
+        run: tests/smoke.sh evilflowers-postgresql:test "${{ steps.args.outputs.pgvector }}" "${{ matrix.pg_search }}"
 
       - name: Vulnerability scan (fail on fixable CRITICAL)
         run: |
@@ -147,6 +149,7 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
             PGVECTOR_VERSION=${{ steps.args.outputs.pgvector }}
+            PG_SEARCH_VERSION=${{ matrix.pg_search }}
             EXTENSIONS=${{ steps.args.outputs.extensions }}
             VERSION=${{ matrix.major }}-${{ needs.matrix.outputs.stamp }}
             REVISION=${{ github.sha }}

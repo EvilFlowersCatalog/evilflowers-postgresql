@@ -64,6 +64,24 @@ Transaction pooling breaks session state: `SET` without `LOCAL`, advisory sessio
 - Storage: `halfvec` halves the size of the index and table for float embeddings with negligible recall loss. Index `binary_quantize(embedding)::bit(n)` and re-rank for very large collections.
 - After a pgvector upgrade, run `ALTER EXTENSION vector UPDATE;` in each database that uses it.
 
+## pg_search (BM25)
+
+[ParadeDB `pg_search`](https://github.com/paradedb/paradedb) adds a `bm25` index type: real BM25 ranking with corpus-wide IDF, which `ts_rank` lacks. It is preloaded, and each database enables it with `CREATE EXTENSION pg_search;`. It requires `vector`; add `CASCADE` if `vector` is not created yet.
+
+```sql
+CREATE INDEX chunks_bm25_idx ON chunks USING bm25 (id, text);
+
+SELECT id, pdb.score(id) AS score
+FROM chunks WHERE text ||| 'hľadaný výraz'
+ORDER BY score DESC LIMIT 20;
+```
+
+- One table can have only one `bm25` index, so list every searchable column in it. Since 0.26 the `key_field` option is deprecated and ignored.
+- Hybrid search: fuse the BM25 branch with a pgvector `ORDER BY embedding <=> $1` branch by reciprocal rank fusion, `sum(1.0 / (60 + rank))`, in one query. `tests/smoke.sql` has a working example.
+- Tokenizers and stemmers are chosen per column in the index definition. Check the ParadeDB documentation for the languages your data needs before building large indexes, because changing the tokenizer means rebuilding the index.
+- After a pg_search upgrade, run `ALTER EXTENSION pg_search UPDATE;` in each database that uses it, and `REINDEX` when the release notes ask for it.
+- Not packaged for every major: a major marked `"pg_search": false` in `versions.json` is built without it (19 is like this until ParadeDB publishes PostgreSQL 19 packages).
+
 ## Observability
 
 - **`pg_stat_statements`** is preloaded and created in every new database through `template1`. Start with:
@@ -89,6 +107,7 @@ Transaction pooling breaks session state: `SET` without `LOCAL`, advisory sessio
 | Extension | Source | Preloaded | Purpose |
 |---|---|---|---|
 | `vector` | pgvector, built from source | no | embeddings, HNSW/IVFFlat, halfvec/sparsevec/bit |
+| `pg_search` | ParadeDB release `.deb` (AGPL-3.0) | yes | BM25 full-text search index (`bm25`), lexical half of hybrid search |
 | `pg_stat_statements` | contrib | yes | query statistics |
 | `auto_explain` | contrib | yes | logs slow plans |
 | `pg_cron` | PGDG | yes | in-database job scheduler (`cron.schedule_in_database`) |
@@ -104,4 +123,4 @@ Not included on purpose:
 
 - **PostGIS:** large, and nothing in EvilFlowers uses geodata. Add `postgis-3` to `extensions` in `versions.json` if that changes.
 - **pgvectorscale:** not packaged by PGDG.
-- **VectorChord:** licensed under AGPL/ELv2, not a permissive open-source licence.
+- **VectorChord:** licensed under AGPL/ELv2, and pgvector covers the expected scale. `pg_search` is the one AGPL component and is shipped unmodified because nothing permissive offers BM25 inside PostgreSQL. Using it from an application does not put the application under the AGPL; modifying `pg_search` itself would.
