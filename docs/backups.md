@@ -34,6 +34,8 @@ Keep at least one copy off the database host, for example on NFS or remote objec
    pg1-path=/var/lib/postgresql/18/docker
    ```
 
+   The image ships the Debian CA bundle, so a MinIO endpoint whose certificate chains to a public CA works with `repo1-s3-verify-tls=y` (the default). For a private CA, mount its PEM file and set `repo1-storage-ca-file=/path/to/ca.crt`.
+
    Pass `PGBACKREST_REPO1_S3_KEY`, `PGBACKREST_REPO1_S3_KEY_SECRET` and `PGBACKREST_REPO1_CIPHER_PASS` as environment variables. Do not write them into the file.
 
 3. Turn on WAL archiving in your host profile (`50-host.conf`), then restart the server:

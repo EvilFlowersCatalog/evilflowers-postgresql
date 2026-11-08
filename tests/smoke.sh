@@ -69,9 +69,15 @@ major="$(psql_c "SELECT current_setting('server_version_num')::int / 10000")"
 [[ "$(psql_c 'SHOW jit')" == "off" ]] || { echo "jit should be off" >&2; exit 1; }
 [[ "$(psql_c "SELECT datlocprovider FROM pg_database WHERE datname = 'app'")" == "b" ]] \
   || { echo "builtin locale provider not applied" >&2; exit 1; }
+[[ "$(psql_c 'SHOW track_wal_io_timing')" == "on" ]] || { echo "track_wal_io_timing should be on" >&2; exit 1; }
+[[ "$(psql_c 'SHOW track_activity_query_size')" == "4kB" ]] || { echo "track_activity_query_size should be 4kB" >&2; exit 1; }
 if (( major >= 18 )); then
   [[ "$(psql_c 'SHOW io_method')" == "worker" ]] || { echo "io_method should be worker" >&2; exit 1; }
   [[ "$(psql_c 'SHOW data_checksums')" == "on" ]] || { echo "data checksums should be on" >&2; exit 1; }
+  [[ "$(psql_c 'SHOW log_connections')" == "setup_durations" ]] || { echo "log_connections should be setup_durations" >&2; exit 1; }
+  [[ "$(psql_c 'SHOW track_cost_delay_timing')" == "on" ]] || { echo "track_cost_delay_timing should be on" >&2; exit 1; }
+else
+  [[ "$(psql_c 'SHOW log_connections')" == "off" ]] || { echo "log_connections should be off before 18" >&2; exit 1; }
 fi
 
 if [[ -n "$EXPECTED_PGVECTOR" ]]; then

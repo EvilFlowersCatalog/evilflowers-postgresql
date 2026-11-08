@@ -43,6 +43,41 @@ RUN pgconfig="/usr/lib/postgresql/${PG_MAJOR}/bin/pg_config" \
  && test -f "/out/usr/lib/postgresql/${PG_MAJOR}/lib/vector.so"
 
 # ---------------------------------------------------------------------------
+# Slovak and Czech full-text search dictionaries for the ispell template.
+# PostgreSQL ships no Slovak or Czech stemmer. The hunspell dictionaries come
+# from Debian trixie (hunspell-sk, hunspell-cs: the LibreOffice dictionaries,
+# already UTF-8). The packages are only unpacked, not installed, so their
+# dictionaries-common dependency stays out of the image. The stop lists are
+# vendored in tsearch_data/ (provenance in tsearch_data/README.md).
+# Only the files are shipped; the app creates the text search objects.
+# ---------------------------------------------------------------------------
+FROM ${BASE_IMAGE} AS tsearch
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+WORKDIR /src
+COPY tsearch_data/*.stop /src/
+
+# The target path is spelled out rather than taken from pg_config, which may
+# belong to a different major (see the pgvector stage).
+# hadolint ignore=SC2016
+RUN apt-get update \
+ && apt-get download hunspell-sk hunspell-cs \
+ && rm -rf /var/lib/apt/lists/* \
+ && dest="/out/usr/share/postgresql/${PG_MAJOR}/tsearch_data" \
+ && mkdir -p "$dest" /out/usr/share/evilflowers \
+ && for deb in hunspell-sk_*.deb hunspell-cs_*.deb; do \
+      dpkg-deb -x "$deb" pkg \
+      && dpkg-deb -W --showformat='${Package} ${Version}\n' "$deb" >> /out/usr/share/evilflowers/manifest-tsearch.txt; \
+    done \
+ && for dict in sk_SK cs_CZ; do \
+      cp -L "pkg/usr/share/hunspell/${dict}.aff" "${dest}/${dict,,}.affix" \
+      && cp -L "pkg/usr/share/hunspell/${dict}.dic" "${dest}/${dict,,}.dict"; \
+    done \
+ && cp slovak.stop czech.stop "$dest/" \
+ && chmod 0644 "$dest"/*
+
+# ---------------------------------------------------------------------------
 # Runtime image
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE}
@@ -57,21 +92,27 @@ ARG CREATED=unknown
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+COPY --from=tsearch /out/usr/ /usr/
+
 # Extensions from the PostgreSQL apt repository (apt.postgresql.org), plus
-# pgBackRest for physical backups to S3 (MinIO) when running under compose.
+# pgBackRest for physical backups to S3 (MinIO) when running under compose,
+# and the system CA bundle (ca-certificates) so pgBackRest and libpq can
+# verify TLS peers (for a private CA, mount it and set repo1-storage-ca-file).
 # PGDG keeps only the current package versions, so they are not pinned. CI
 # records what was installed in /usr/share/evilflowers/manifest.txt.
 # hadolint ignore=DL3008
 RUN apt-get update \
- && pkgs=(pgbackrest) \
+ && pkgs=(ca-certificates pgbackrest) \
  && for ext in ${EXTENSIONS}; do pkgs+=("postgresql-${PG_MAJOR}-${ext}"); done \
  && apt-get install -y --no-install-recommends "${pkgs[@]}" \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /usr/share/evilflowers \
  && { echo "postgresql $(postgres --version | awk '{print $3}')"; \
       echo "pgvector ${PGVECTOR_VERSION}"; \
-      dpkg-query -W -f='${Package} ${Version}\n' "${pkgs[@]}"; } \
-      > /usr/share/evilflowers/manifest.txt
+      dpkg-query -W -f='${Package} ${Version}\n' "${pkgs[@]}"; \
+      cat /usr/share/evilflowers/manifest-tsearch.txt; } \
+      > /usr/share/evilflowers/manifest.txt \
+ && rm /usr/share/evilflowers/manifest-tsearch.txt
 
 COPY --from=pgvector /out/usr/ /usr/
 
@@ -99,7 +140,7 @@ RUN mkdir -p /etc/postgresql/conf.d \
 RUN if [[ -n "${PG_SEARCH_VERSION}" ]]; then \
       deb="postgresql-${PG_MAJOR}-pg-search_${PG_SEARCH_VERSION}-1PARADEDB-trixie_$(dpkg --print-architecture).deb" \
       && apt-get update \
-      && apt-get install -y --no-install-recommends ca-certificates curl \
+      && apt-get install -y --no-install-recommends curl \
       && curl -fsSL -o "/tmp/${deb}" "https://github.com/paradedb/paradedb/releases/download/v${PG_SEARCH_VERSION}/${deb}" \
       && apt-get install -y --no-install-recommends "/tmp/${deb}" \
       && apt-get purge -y --auto-remove curl \
@@ -113,11 +154,11 @@ RUN if [[ -n "${PG_SEARCH_VERSION}" ]]; then \
 COPY initdb/ /docker-entrypoint-initdb.d/
 
 LABEL org.opencontainers.image.title="evilflowers-postgresql" \
-      org.opencontainers.image.description="PostgreSQL ${PG_MAJOR} with pgvector ${PGVECTOR_VERSION}, ParadeDB pg_search and operational extensions for EvilFlowers" \
+      org.opencontainers.image.description="PostgreSQL ${PG_MAJOR} with pgvector ${PGVECTOR_VERSION}, ParadeDB pg_search, Slovak/Czech full-text dictionaries and operational extensions for EvilFlowers" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}" \
-      org.opencontainers.image.licenses="PostgreSQL AND AGPL-3.0-only" \
+      org.opencontainers.image.licenses="PostgreSQL AND AGPL-3.0-only AND GPL-2.0-only AND MIT" \
       org.opencontainers.image.base.name="${BASE_IMAGE}" \
       io.github.evilflowerscatalog.pgvector.version="${PGVECTOR_VERSION}" \
       io.github.evilflowerscatalog.pg_search.version="${PG_SEARCH_VERSION}"

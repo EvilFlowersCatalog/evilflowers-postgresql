@@ -36,6 +36,7 @@ echo
 echo "- pgvector $(jq -r '.pgvector' versions.json) (built from source)"
 echo "- ParadeDB pg_search $(jq -r '.pg_search' versions.json) (upstream release package, AGPL-3.0); not in: $(jq -r '[.majors | to_entries[] | select(.value.pg_search == false) | .key] | if length == 0 then "none" else join(", ") end' versions.json)"
 echo "- PGDG extensions: $(jq -r '.extensions | map("postgresql-<major>-" + .) | join(", ")' versions.json)"
+echo "- Full-text search dictionaries (Slovak \`sk_sk\`, Czech \`cs_cz\`): $(jq -r '.dictionaries.hunspell | join(", ")' versions.json) from Debian trixie, stop lists from $(jq -r '[.dictionaries.stopwords[] | split("@") | .[0] + "@" + .[1][0:7]] | join(", ")' versions.json)"
 echo "- Base images:"
 jq -r '.majors | to_entries[] | "  - \(.key): `\(.value.base)`"' versions.json
 echo

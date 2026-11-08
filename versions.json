@@ -4,6 +4,14 @@
   "pgvector": "0.8.7",
   "pg_search": "0.26.4",
   "extensions": ["cron", "repack", "hypopg", "pgaudit", "partman"],
+  "dictionaries": {
+    "$comment": "Full-text search dictionaries in tsearch_data. Hunspell files come from the Debian trixie packages (exact versions in manifest.txt); the stop lists are vendored in tsearch_data/ from these commits.",
+    "hunspell": ["hunspell-sk", "hunspell-cs"],
+    "stopwords": {
+      "slovak": "stopwords-iso/stopwords-sk@bd3c61983b761f7aed676de3c857313982de123e",
+      "czech": "stopwords-iso/stopwords-cs@e93e103f19297e60f69535e41dd216352c363698"
+    }
+  },
   "majors": {
     "17": {
       "base": "postgres:17.11-trixie@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1",

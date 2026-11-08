@@ -93,6 +93,19 @@ ORDER BY score DESC LIMIT 20;
 
 - **Logs:** statements over 1 s, plans of statements over 5 s (`auto_explain`), lock waits, temp files over 64 MB and autovacuum runs over 10 s go to stderr. [pgBadger](https://github.com/darold/pgbadger) can turn `docker logs` output into a report.
 - **Metrics:** `prometheuscommunity/postgres-exporter`. Add `--collector.stat_statements` and `--collector.long_running_transactions`.
+- **Monitoring settings:** these feed latency data to the exporter and to the logs. All of them need a restart or apply only at session start, so they are image config, not `ALTER SYSTEM`:
+
+  | Setting | Value | Where | What it feeds |
+  |---|---|---|---|
+  | `track_io_timing` | `on` | all majors | `pg_stat_io`, `pg_stat_database.blk_*_time`, `pg_stat_statements.shared_blk_*_time` |
+  | `track_wal_io_timing` | `on` | all majors | WAL write and fsync time. Since 18 it is in `pg_stat_io` (`object = 'wal'`) |
+  | `track_activity_query_size` | `4096` | all majors | longer `pg_stat_activity.query` text; ORM queries get cut at the 1 kB default. Restart only |
+  | `log_connections` | `setup_durations` | 18+ (`00-version.conf`) | one log line per connection with the total setup, fork and auth time: client-visible connection latency, readable in Loki, without the receipt and auth lines of `on` |
+  | `track_cost_delay_timing` | `on` | 18+ (`00-version.conf`) | time vacuum spends in cost-based sleep, in `pg_stat_progress_vacuum` |
+  | `pg_stat_statements.track_planning` | `off` | all majors | `*_plan_time` columns. Off because the documentation warns of noticeable overhead; enable it in a host profile if plan time matters |
+
+  17 rejects the list syntax of `log_connections` and has no `track_cost_delay_timing`, so those two live in the version drop-in and 17 keeps `log_connections = off`. Under CloudNativePG they are set in `spec.postgresql.parameters` in `k8s/cnpg/cluster.yaml`.
+
 - **Index advice:** test candidate indexes without building them, using `hypopg`:
 
   ```sql

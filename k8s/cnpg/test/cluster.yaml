@@ -31,6 +31,9 @@ spec:
       shared_buffers: 128MB
       io_method: worker
       jit: "off"
+      log_connections: setup_durations
+      track_wal_io_timing: "on"
+      track_cost_delay_timing: "on"
       pg_stat_statements.max: "1000"
       pgaudit.log: none
       cron.database_name: postgres

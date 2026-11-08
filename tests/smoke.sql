@@ -82,6 +82,46 @@ RESET enable_seqscan;
 \echo '== pg_trgm + unaccent'
 SELECT similarity(unaccent('Žltý kôň'), 'Zlty kon') > 0.5 AS trgm_ok;
 
+\echo '== Slovak and Czech hunspell dictionaries (the setup documented in README.md)'
+CREATE TEXT SEARCH DICTIONARY slovak_hunspell (TEMPLATE = ispell, DictFile = sk_sk, AffFile = sk_sk, StopWords = slovak);
+CREATE TEXT SEARCH DICTIONARY slovak_stop (TEMPLATE = simple, StopWords = slovak, Accept = false);
+CREATE TEXT SEARCH CONFIGURATION slovak (COPY = simple);
+ALTER TEXT SEARCH CONFIGURATION slovak
+  ALTER MAPPING FOR asciiword, word, hword, hword_part WITH slovak_stop, slovak_hunspell, simple;
+CREATE TEXT SEARCH DICTIONARY czech_hunspell (TEMPLATE = ispell, DictFile = cs_cz, AffFile = cs_cz, StopWords = czech);
+CREATE TEXT SEARCH DICTIONARY czech_stop (TEMPLATE = simple, StopWords = czech, Accept = false);
+CREATE TEXT SEARCH CONFIGURATION czech (COPY = simple);
+ALTER TEXT SEARCH CONFIGURATION czech
+  ALTER MAPPING FOR asciiword, word, hword, hword_part WITH czech_stop, czech_hunspell, simple;
+SELECT to_tsvector('slovak', 'Vzdelávanie v knižniciach') AS slovak, to_tsvector('czech', 'Kniha nebo časopis o knihovnách') AS czech;
+DO $$
+DECLARE
+  t text[];
+BEGIN
+  -- dictionary, inflected form, expected lemma
+  FOREACH t SLICE 1 IN ARRAY ARRAY[
+    ['slovak_hunspell', 'vzdelávania', 'vzdelávanie'],
+    ['slovak_hunspell', 'knižniciach', 'knižnica'],
+    ['slovak_hunspell', 'univerzite', 'univerzita'],
+    ['czech_hunspell', 'vzdělávacích', 'vzdělávací'],
+    ['czech_hunspell', 'knihovnách', 'knihovna'],
+    ['czech_hunspell', 'univerzitě', 'univerzita']
+  ] LOOP
+    IF NOT coalesce(ts_lexize(t[1]::regdictionary, t[2]) @> ARRAY[t[3]], false) THEN
+      RAISE EXCEPTION '%: % lexized to %, expected %', t[1], t[2], ts_lexize(t[1]::regdictionary, t[2]), t[3];
+    END IF;
+  END LOOP;
+  -- stop lists are loaded and the stop dictionary catches words whose lemma is
+  -- not in the list (Czech "nebo" lemmatizes to {ba,ben})
+  IF to_tsvector('czech', 'nebo a v') <> ''::tsvector OR to_tsvector('slovak', 'je a v') <> ''::tsvector THEN
+    RAISE EXCEPTION 'stop words not removed';
+  END IF;
+  IF NOT to_tsvector('slovak', 'Vzdelávanie v knižniciach') @@ to_tsquery('slovak', 'vzdelávania & knižnica')
+     OR NOT to_tsvector('czech', 'Vzdělávání v knihovnách') @@ to_tsquery('czech', 'knihovna') THEN
+    RAISE EXCEPTION 'inflected forms do not match';
+  END IF;
+END $$;
+
 \if :pg_search
 \echo '== pg_search: BM25 index, ranked query, hybrid with pgvector'
 CREATE EXTENSION pg_search;

@@ -2,3 +2,4 @@
 *
 !conf
 !initdb
+!tsearch_data/*.stop
