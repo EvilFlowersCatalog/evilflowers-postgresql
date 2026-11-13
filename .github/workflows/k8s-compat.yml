@@ -74,10 +74,16 @@ jobs:
             INSERT INTO docs VALUES (1, 'pgvector and BM25'), (2, 'replication');
             CREATE INDEX ON docs USING bm25 (id, body);
             SELECT id, pdb.score(id) FROM docs WHERE body ||| 'bm25';"
+          # The Cluster turns Ready while the new replica may still be
+          # connecting, so give it up to a minute to start streaming.
+          for _ in $(seq 1 30); do
+            replicas="$(kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
+              "SELECT count(*) FROM pg_stat_replication WHERE state = 'streaming'")"
+            [[ "$replicas" == 1 ]] && break
+            sleep 2
+          done
           kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -c \
             "SELECT application_name, state, sync_state FROM pg_stat_replication"
-          replicas="$(kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
-            "SELECT count(*) FROM pg_stat_replication WHERE state = 'streaming'")"
           [[ "$replicas" == 1 ]] || { echo "expected 1 streaming replica, got $replicas" >&2; exit 1; }
           cron="$(kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
             "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'")"
