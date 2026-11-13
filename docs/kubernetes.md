@@ -9,7 +9,25 @@ CNPG injects its own instance manager as PID 1 and ignores the image's entrypoin
 - **UID/GID 999** instead of 26, so set `postgresUID: 999` and `postgresGID: 999`. `k8s/cnpg/cluster.yaml` does this.
 - **Configuration** lives in `spec.postgresql.parameters`. CNPG adds `pg_stat_statements`, `auto_explain` and `pgaudit` to `shared_preload_libraries` itself when their parameters are present. List only `pg_cron` explicitly.
 
-`.github/workflows/k8s-compat.yml` checks this every week on kind. It deploys a 2-instance cluster with the default major and checks replication, `vector` and `pg_cron`.
+`.github/workflows/k8s-compat.yml` checks this every week on kind. It deploys a 1-instance cluster with the default major and checks `vector`, `pg_search` and `pg_cron`.
+
+## Replicas and pg_search
+
+Community ParadeDB `pg_search` does not support physical replication. When a standby replays the WAL of a `bm25` index, its startup process stops with:
+
+```
+FATAL: replicas are not supported on community and require paradedb enterprise,
+       which guarantees physical replication safety on standbys.
+CONTEXT: WAL redo at … for pg_search/INIT_INDEX
+```
+
+The standby keeps restarting and never streams again. Under CNPG this means:
+
+- A database with `bm25` indexes runs on **one instance**, which is what `k8s/cnpg/cluster.yaml` sets. There is no streaming replica and no automated failover; recovery comes from backups (Barman Cloud plugin, point-in-time recovery).
+- More instances work only while no database has a `bm25` index. Creating the first one takes every standby down.
+- For replicas with BM25, a pg_search edition that supports physical replication is needed (ParadeDB Enterprise), or the BM25 tables move to a separate single-instance cluster.
+
+This was observed with pg_search 0.26.4 under CNPG 1.30 in CI. The compose deployment has no standbys and is not affected.
 
 ## Install
 
@@ -25,7 +43,7 @@ On single-node clusters such as k3s, the `local-path` storage class works if it 
 
 ## Upgrades under CNPG
 
-- **Minor release or rebuild:** change the image for the major in `ImageCatalog` to the new immutable tag. CNPG restarts the replicas, switches over and restarts the old primary, so downtime is only a few seconds.
+- **Minor release or rebuild:** change the image for the major in `ImageCatalog` to the new immutable tag. `k8s/cnpg/cluster.yaml` runs one instance ([above](#replicas-and-pg_search)), so CNPG restarts the primary in place, and the database is down while PostgreSQL restarts. With replicas, CNPG would restart them first, then switch over, and downtime would be only a few seconds.
 - **Major release:** CNPG (1.26+) supports declarative in-place major upgrades with `pg_upgrade`. Point `imageCatalogRef.major` at the new major. `pg_upgrade` needs matching locale and checksum settings, which is why this repository standardises on builtin `C.UTF-8` with checksums on. Rehearse on a clone first, for example with a cluster bootstrapped through `bootstrap.recovery` from the latest backup.
 
 ## Backups

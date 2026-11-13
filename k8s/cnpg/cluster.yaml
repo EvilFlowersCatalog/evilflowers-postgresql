@@ -13,7 +13,12 @@ kind: Cluster
 metadata:
   name: evilflowers-db
 spec:
-  instances: 2
+  # One instance: community ParadeDB pg_search refuses physical standbys. A
+  # replica stops at the first bm25 index's WAL record ("replicas are not
+  # supported on community and require paradedb enterprise"). Raise this only
+  # with a pg_search edition that supports replicas, or for databases without
+  # bm25 indexes. Recovery comes from backups. See docs/kubernetes.md.
+  instances: 1
   imageCatalogRef:
     apiGroup: postgresql.cnpg.io
     kind: ImageCatalog

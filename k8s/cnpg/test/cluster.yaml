@@ -1,11 +1,16 @@
 # Minimal cluster used by .github/workflows/k8s-compat.yml on kind.
 # The workflow substitutes IMAGE with a locally built image.
+#
+# One instance: community ParadeDB pg_search refuses physical standbys. The
+# first bm25 index's WAL record (pg_search/INIT_INDEX) stops a replica with
+# "replicas are not supported on community and require paradedb enterprise".
+# See docs/kubernetes.md.
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: compat
 spec:
-  instances: 2
+  instances: 1
   imageName: IMAGE
   imagePullPolicy: Never
   postgresUID: 999

@@ -1,8 +1,9 @@
 name: k8s-compat
 
 # Proves the image runs under CloudNativePG: builds the default major, loads it
-# into a kind cluster, deploys a 2-instance Cluster and checks replication and
-# extensions. Runs weekly and on changes that could break it.
+# into a kind cluster, deploys a 1-instance Cluster and checks the extensions.
+# One instance, because community pg_search stops physical standbys (see
+# docs/kubernetes.md). Runs weekly and on changes that could break it.
 
 on:
   pull_request:
@@ -60,7 +61,7 @@ jobs:
           sed "s|imageName: IMAGE|imageName: ${COMPAT_IMAGE}|" k8s/cnpg/test/cluster.yaml | kubectl apply -f -
           kubectl wait cluster/compat --for=condition=Ready --timeout=600s
 
-      - name: Check extensions and replication
+      - name: Check extensions
         run: |
           primary="$(kubectl get cluster compat -o jsonpath='{.status.currentPrimary}')"
           kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d app -c "
@@ -74,17 +75,6 @@ jobs:
             INSERT INTO docs VALUES (1, 'pgvector and BM25'), (2, 'replication');
             CREATE INDEX ON docs USING bm25 (id, body);
             SELECT id, pdb.score(id) FROM docs WHERE body ||| 'bm25';"
-          # The Cluster turns Ready while the new replica may still be
-          # connecting, so give it up to a minute to start streaming.
-          for _ in $(seq 1 30); do
-            replicas="$(kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
-              "SELECT count(*) FROM pg_stat_replication WHERE state = 'streaming'")"
-            [[ "$replicas" == 1 ]] && break
-            sleep 2
-          done
-          kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -c \
-            "SELECT application_name, state, sync_state FROM pg_stat_replication"
-          [[ "$replicas" == 1 ]] || { echo "expected 1 streaming replica, got $replicas" >&2; exit 1; }
           cron="$(kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
             "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'")"
           [[ "$cron" == 1 ]] || { echo "pg_cron not created in postgres (count $cron)" >&2; exit 1; }
