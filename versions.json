@@ -1,9 +1,9 @@
 {
-  "$comment": "Single source of truth for the build matrix. Renovate bumps base digests, pgvector and pg_search; humans change status/default. A major sets \"pg_search\": false while ParadeDB ships no package for it.",
+  "$comment": "Single source of truth for the build matrix. Renovate bumps base digests, pgvector and pg_search; humans change status/default. A major sets \"pg_search\": false while ParadeDB ships no package for it, and \"<extension>\": false (e.g. \"age\": false) while PGDG ships no postgresql-<major>-<extension> package.",
   "default": "18",
   "pgvector": "0.8.7",
   "pg_search": "0.26.4",
-  "extensions": ["cron", "repack", "hypopg", "pgaudit", "partman"],
+  "extensions": ["cron", "repack", "hypopg", "pgaudit", "partman", "age"],
   "dictionaries": {
     "$comment": "Full-text search dictionaries in tsearch_data. Hunspell files come from the Debian trixie packages (exact versions in manifest.txt); the stop lists are vendored in tsearch_data/ from these commits.",
     "hunspell": ["hunspell-sk", "hunspell-cs"],
@@ -27,7 +27,8 @@
       "base": "postgres:19rc1-trixie@sha256:a4193f06aaf4cf10140225461dea49cf0d65a885221a07a90a9d410cdf469d7b",
       "status": "preview",
       "eol": "2031-11",
-      "pg_search": false
+      "pg_search": false,
+      "age": false
     }
   }
 }

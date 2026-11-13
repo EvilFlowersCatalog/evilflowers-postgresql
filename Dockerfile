@@ -6,8 +6,9 @@
 # so the docker-entrypoint / POSTGRES_* environment contract is unchanged and the
 # image also runs under CloudNativePG (set postgresUID/postgresGID to 999).
 #
-# BASE_IMAGE, PGVECTOR_VERSION and PG_SEARCH_VERSION come from versions.json via
-# CI (see Makefile). An empty PG_SEARCH_VERSION builds the image without pg_search.
+# BASE_IMAGE, PGVECTOR_VERSION, PG_SEARCH_VERSION and EXTENSIONS come from
+# versions.json via CI (see Makefile). An empty PG_SEARCH_VERSION builds the image
+# without pg_search; EXTENSIONS already leaves out what a major opts out of.
 
 ARG BASE_IMAGE=postgres:18.6-trixie
 
@@ -85,7 +86,7 @@ FROM ${BASE_IMAGE}
 ARG BASE_IMAGE
 ARG PGVECTOR_VERSION=0.8.7
 ARG PG_SEARCH_VERSION=0.26.4
-ARG EXTENSIONS="cron repack hypopg pgaudit partman"
+ARG EXTENSIONS="cron repack hypopg pgaudit partman age"
 ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED=unknown
@@ -100,6 +101,9 @@ COPY --from=tsearch /out/usr/ /usr/
 # verify TLS peers (for a private CA, mount it and set repo1-storage-ca-file).
 # PGDG keeps only the current package versions, so they are not pinned. CI
 # records what was installed in /usr/share/evilflowers/manifest.txt.
+# Apache AGE (postgresql-<major>-age, Apache-2.0) is one of them. It needs no
+# shared_preload_libraries entry: a session runs LOAD 'age', or a database sets
+# session_preload_libraries, so databases that do not use it are unaffected.
 # hadolint ignore=DL3008
 RUN apt-get update \
  && pkgs=(ca-certificates pgbackrest) \
@@ -154,11 +158,11 @@ RUN if [[ -n "${PG_SEARCH_VERSION}" ]]; then \
 COPY initdb/ /docker-entrypoint-initdb.d/
 
 LABEL org.opencontainers.image.title="evilflowers-postgresql" \
-      org.opencontainers.image.description="PostgreSQL ${PG_MAJOR} with pgvector ${PGVECTOR_VERSION}, ParadeDB pg_search, Slovak/Czech full-text dictionaries and operational extensions for EvilFlowers" \
+      org.opencontainers.image.description="PostgreSQL ${PG_MAJOR} with pgvector ${PGVECTOR_VERSION}, ParadeDB pg_search, Apache AGE, Slovak/Czech full-text dictionaries and operational extensions for EvilFlowers" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}" \
-      org.opencontainers.image.licenses="PostgreSQL AND AGPL-3.0-only AND GPL-2.0-only AND MIT" \
+      org.opencontainers.image.licenses="PostgreSQL AND AGPL-3.0-only AND GPL-2.0-only AND MIT AND Apache-2.0" \
       org.opencontainers.image.base.name="${BASE_IMAGE}" \
       io.github.evilflowerscatalog.pgvector.version="${PGVECTOR_VERSION}" \
       io.github.evilflowerscatalog.pg_search.version="${PG_SEARCH_VERSION}"

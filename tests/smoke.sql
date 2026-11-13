@@ -1,6 +1,7 @@
 -- Smoke test executed by tests/smoke.sh inside the container.
 -- Any error aborts the run (psql -v ON_ERROR_STOP=1).
--- smoke.sh sets :pg_search to 1 when the image ships pg_search, else 0.
+-- smoke.sh sets :pg_search to 1 when the image ships pg_search, else 0, and
+-- :age likewise for Apache AGE.
 
 \echo '== server'
 SELECT version();
@@ -163,6 +164,70 @@ WITH lexical AS (
 SELECT id, sum(1.0 / (60 + r)) AS rrf
 FROM (SELECT * FROM lexical UNION ALL SELECT * FROM dense) AS fused
 GROUP BY id ORDER BY rrf DESC LIMIT 3;
+\endif
+
+\if :age
+-- Same session as the pgvector and pg_search blocks above, so the three
+-- extensions are proven to coexist in one backend.
+\echo '== Apache AGE: graph, Cypher, join with relational data'
+CREATE EXTENSION age;
+LOAD 'age';
+-- Schema-qualifying ag_catalog.cypher is not enough: create_graph, label
+-- creation and edge matches resolve AGE's graphid operators through
+-- search_path. Appending ag_catalog keeps it from shadowing public.
+SET search_path = "$user", public, ag_catalog;
+SELECT ag_catalog.create_graph('smoke_graph');
+SELECT * FROM ag_catalog.cypher('smoke_graph', $$
+  CREATE (:Section {id: 1})-[:DEFINES]->(:Concept {term: 'entropia'})<-[:DISCUSSES]-(:Section {id: 2})
+$$) AS (v ag_catalog.agtype);
+SELECT coalesce(string_agg(format('%s->%s', a, b), ','), '') = '1->2' AS age_path_ok
+FROM ag_catalog.cypher('smoke_graph', $$
+  MATCH (a:Section)-[:DEFINES]->(c:Concept)<-[:DISCUSSES]-(b:Section) RETURN a.id, b.id
+$$) AS (a ag_catalog.agtype, b ag_catalog.agtype) \gset
+\if :age_path_ok
+\else
+\echo 'Cypher did not return exactly the path 1 -> 2'
+SELECT 1/0;
+\endif
+-- Graph result joined with the pgvector table (and the pg_search table).
+DO $$
+DECLARE
+  n int;
+BEGIN
+  SELECT count(*) INTO n
+  FROM ag_catalog.cypher('smoke_graph', $c$
+    MATCH (s:Section)-[:DISCUSSES]->(:Concept {term: 'entropia'}) RETURN s.id
+  $c$) AS g (sid ag_catalog.agtype)
+  JOIN items ON items.id = g.sid::text::bigint
+  WHERE items.embedding IS NOT NULL;
+  IF n <> 1 THEN
+    RAISE EXCEPTION 'graph/pgvector join returned % rows, expected 1', n;
+  END IF;
+END $$;
+\if :pg_search
+SELECT g.sid::text::int AS section, docs.body, pdb.score(docs.id) AS score
+FROM ag_catalog.cypher('smoke_graph', $$
+  MATCH (s:Section)-[]->(:Concept) RETURN s.id
+$$) AS g (sid ag_catalog.agtype)
+JOIN docs ON docs.id = g.sid::text::int
+WHERE docs.body ||| 'kôň'
+ORDER BY score DESC;
+DO $$
+BEGIN
+  IF ARRAY(
+    SELECT docs.id
+    FROM ag_catalog.cypher('smoke_graph', $c$
+      MATCH (s:Section)-[]->(:Concept) RETURN s.id
+    $c$) AS g (sid ag_catalog.agtype)
+    JOIN docs ON docs.id = g.sid::text::int
+    WHERE docs.body ||| 'kôň'
+    ORDER BY pdb.score(docs.id) DESC
+  ) <> ARRAY[2, 1] THEN
+    RAISE EXCEPTION 'graph/pg_search join returned an unexpected ranking';
+  END IF;
+END $$;
+\endif
+SELECT ag_catalog.drop_graph('smoke_graph', true);
 \endif
 
 \echo '== hypopg'

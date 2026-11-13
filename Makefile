@@ -9,7 +9,8 @@ BASE_IMAGE := $(shell jq -r --arg m "$(MAJOR)" '.majors[$$m].base' versions.json
 PGVECTOR   := $(shell jq -r .pgvector versions.json)
 # empty for a major marked "pg_search": false
 PG_SEARCH  := $(shell jq -r --arg m "$(MAJOR)" 'if .majors[$$m].pg_search == false then "" else .pg_search end' versions.json)
-EXTENSIONS := $(shell jq -r '.extensions | join(" ")' versions.json)
+# without the extensions this major opts out of ("<extension>": false)
+EXTENSIONS := $(shell jq -r --arg m "$(MAJOR)" '.majors[$$m] as $$v | .extensions | map(select($$v[.] != false)) | join(" ")' versions.json)
 TAG        ?= evilflowers-postgresql:$(MAJOR)-local
 TRIVY      ?= aquasec/trivy:0.76.1
 
@@ -24,7 +25,7 @@ build:
 		-t $(TAG) .
 
 test: build
-	tests/smoke.sh $(TAG) "$(PGVECTOR)" "$(PG_SEARCH)"
+	tests/smoke.sh $(TAG) "$(PGVECTOR)" "$(PG_SEARCH)" "$(EXTENSIONS)"
 
 scan: build
 	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \

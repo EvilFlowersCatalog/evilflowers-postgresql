@@ -67,7 +67,7 @@ Recommended rhythm: one maintenance slot per month (first Tuesday) for minors an
 
 ## Adding a new major (checklist)
 
-1. Add `"<N>": {"base": "postgres:<N>rc1-trixie@sha256:…", "status": "preview", "pg_search": false}` to `versions.json` and add `conf/version/<N>.conf`.
-2. Watch the preview builds. When GA ships, switch to `postgres:<N>.0-trixie@…` by hand. Renovate deliberately leaves preview tags alone. Drop `"pg_search": false` once the ParadeDB release has a `postgresql-<N>-pg-search_…-trixie` package.
+1. Add `"<N>": {"base": "postgres:<N>rc1-trixie@sha256:…", "status": "preview", "pg_search": false, "age": false}` to `versions.json` and add `conf/version/<N>.conf`. Any entry of `extensions` can be opted out this way (`"<extension>": false`) while PGDG has no `postgresql-<N>-<extension>` package.
+2. Watch the preview builds. When GA ships, switch to `postgres:<N>.0-trixie@…` by hand. Renovate deliberately leaves preview tags alone. Drop `"pg_search": false` once the ParadeDB release has a `postgresql-<N>-pg-search_…-trixie` package, and `"age": false` once PGDG publishes `postgresql-<N>-age` for both amd64 and arm64.
 3. At x.1 or x.2, and only with `pg_search` included: set `status` to `stable`, move `default`, set the previous major to `maintenance`, and add the major to `k8s/cnpg/image-catalog.yaml`.
 4. Upgrade the deployments, then drop the oldest major.

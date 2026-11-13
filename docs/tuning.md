@@ -80,6 +80,7 @@ ORDER BY score DESC LIMIT 20;
 - Hybrid search: fuse the BM25 branch with a pgvector `ORDER BY embedding <=> $1` branch by reciprocal rank fusion, `sum(1.0 / (60 + rank))`, in one query. `tests/smoke.sql` has a working example.
 - Tokenizers and stemmers are chosen per column in the index definition. Check the ParadeDB documentation for the languages your data needs before building large indexes, because changing the tokenizer means rebuilding the index.
 - After a pg_search upgrade, run `ALTER EXTENSION pg_search UPDATE;` in each database that uses it, and `REINDEX` when the release notes ask for it.
+- No physical standbys: community pg_search stops a replica as soon as it replays a `bm25` index's WAL ("replicas are not supported on community"). Under CloudNativePG, run such a database on one instance ([kubernetes.md](kubernetes.md#replicas-and-pg_search)).
 - Not packaged for every major: a major marked `"pg_search": false` in `versions.json` is built without it (19 is like this until ParadeDB publishes PostgreSQL 19 packages).
 
 ## Observability
@@ -128,6 +129,7 @@ ORDER BY score DESC LIMIT 20;
 | `pg_partman` | PGDG | no | time/serial partition management, for logs and events |
 | `pg_repack` | PGDG | no | online table and index rebuilds |
 | `hypopg` | PGDG | no | hypothetical indexes |
+| `age` | PGDG (Apache-2.0) | no (per database: `session_preload_libraries`, see README) | Apache AGE property graph and Cypher queries. Not in 19-preview (`"age": false`) |
 | `pg_trgm`, `unaccent`, `btree_gin`, `fuzzystrmatch`, ... | contrib | no | fuzzy search and accent-insensitive Slovak search |
 
 Also installed: **pgBackRest**, for physical backups and point-in-time recovery to MinIO/S3 under compose (see [backups.md](backups.md)).

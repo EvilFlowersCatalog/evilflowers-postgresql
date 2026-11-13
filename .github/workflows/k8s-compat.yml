@@ -1,8 +1,9 @@
 name: k8s-compat
 
 # Proves the image runs under CloudNativePG: builds the default major, loads it
-# into a kind cluster, deploys a 2-instance Cluster and checks replication and
-# extensions. Runs weekly and on changes that could break it.
+# into a kind cluster, deploys a 1-instance Cluster and checks the extensions.
+# One instance, because community pg_search stops physical standbys (see
+# docs/kubernetes.md). Runs weekly and on changes that could break it.
 
 on:
   pull_request:
@@ -29,14 +30,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build default major
+        # CNPG reads the PostgreSQL major from the image tag, so the tag must
+        # start with it ("evilflowers-postgresql:compat" is an invalid version tag).
         run: |
           major="$(jq -r .default versions.json)"
+          echo "COMPAT_IMAGE=evilflowers-postgresql:${major}-compat" >> "$GITHUB_ENV"
           docker build \
             --build-arg BASE_IMAGE="$(jq -r --arg m "$major" '.majors[$m].base' versions.json)" \
             --build-arg PGVECTOR_VERSION="$(jq -r .pgvector versions.json)" \
             --build-arg PG_SEARCH_VERSION="$(jq -r --arg m "$major" 'if .majors[$m].pg_search == false then "" else .pg_search end' versions.json)" \
-            --build-arg EXTENSIONS="$(jq -r '.extensions | join(" ")' versions.json)" \
-            -t evilflowers-postgresql:compat .
+            --build-arg EXTENSIONS="$(jq -r --arg m "$major" '.majors[$m] as $v | .extensions | map(select($v[.] != false)) | join(" ")' versions.json)" \
+            -t "evilflowers-postgresql:${major}-compat" .
 
       - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
@@ -44,7 +48,7 @@ jobs:
           cluster_name: compat
 
       - name: Load image into kind
-        run: kind load docker-image evilflowers-postgresql:compat --name compat
+        run: kind load docker-image "$COMPAT_IMAGE" --name compat
 
       - name: Install CloudNativePG
         run: |
@@ -54,10 +58,10 @@ jobs:
 
       - name: Deploy cluster
         run: |
-          sed 's|imageName: IMAGE|imageName: evilflowers-postgresql:compat|' k8s/cnpg/test/cluster.yaml | kubectl apply -f -
+          sed "s|imageName: IMAGE|imageName: ${COMPAT_IMAGE}|" k8s/cnpg/test/cluster.yaml | kubectl apply -f -
           kubectl wait cluster/compat --for=condition=Ready --timeout=600s
 
-      - name: Check extensions and replication
+      - name: Check extensions
         run: |
           primary="$(kubectl get cluster compat -o jsonpath='{.status.currentPrimary}')"
           kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d app -c "
@@ -71,10 +75,9 @@ jobs:
             INSERT INTO docs VALUES (1, 'pgvector and BM25'), (2, 'replication');
             CREATE INDEX ON docs USING bm25 (id, body);
             SELECT id, pdb.score(id) FROM docs WHERE body ||| 'bm25';"
-          kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
-            "SELECT count(*) FROM pg_stat_replication" | grep -qx 1
-          kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
-            "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'" | grep -qx 1
+          cron="$(kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
+            "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'")"
+          [[ "$cron" == 1 ]] || { echo "pg_cron not created in postgres (count $cron)" >&2; exit 1; }
 
       - name: Diagnostics
         if: failure()

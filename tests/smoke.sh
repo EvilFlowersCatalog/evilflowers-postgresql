@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
 # Smoke-test a built image.
 #
-#   tests/smoke.sh <image> [expected-pgvector-version] [expected-pg_search-version]
+#   tests/smoke.sh <image> [expected-pgvector-version] [expected-pg_search-version] [extensions]
 #
 # Starts the image with an empty volume, waits for it to be healthy, runs
 # tests/smoke.sql, checks versions and settings, then restarts the container on
 # the same volume to prove an existing data directory starts cleanly.
 # An empty pg_search version means the image is built without pg_search: the
 # test then also checks that it is absent and not preloaded.
+# [extensions] is the EXTENSIONS build argument (PGDG packages, space-separated).
+# It decides whether Apache AGE is expected; without it, AGE is expected.
 set -Eeuo pipefail
 
-IMAGE="${1:?usage: smoke.sh <image> [pgvector-version] [pg_search-version]}"
+IMAGE="${1:?usage: smoke.sh <image> [pgvector-version] [pg_search-version] [extensions]}"
 EXPECTED_PGVECTOR="${2:-}"
 EXPECTED_PG_SEARCH="${3:-}"
+EXTENSIONS="${4-age}"
 HAS_PG_SEARCH=0
 [[ -n "$EXPECTED_PG_SEARCH" ]] && HAS_PG_SEARCH=1
+HAS_AGE=0
+[[ " $EXTENSIONS " == *" age "* ]] && HAS_AGE=1
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAME="pg-smoke-$$"
 VOLUME="pg-smoke-$$"
@@ -61,7 +66,7 @@ docker run -d --name "$NAME" \
 wait_healthy
 
 echo "==> running smoke.sql"
-docker exec "$NAME" psql -X -v ON_ERROR_STOP=1 -v pg_search="$HAS_PG_SEARCH" -U postgres -d postgres -f /tests/smoke.sql
+docker exec "$NAME" psql -X -v ON_ERROR_STOP=1 -v pg_search="$HAS_PG_SEARCH" -v age="$HAS_AGE" -U postgres -d postgres -f /tests/smoke.sql
 
 echo "==> checking settings"
 major="$(psql_c "SELECT current_setting('server_version_num')::int / 10000")"
@@ -88,6 +93,12 @@ fi
 actual="$(psql_c "SELECT coalesce(max(default_version), '') FROM pg_available_extensions WHERE name = 'pg_search'")"
 [[ "$actual" == "$EXPECTED_PG_SEARCH" ]] \
   || { echo "pg_search '$actual' != expected '$EXPECTED_PG_SEARCH'" >&2; exit 1; }
+
+actual="$(psql_c "SELECT count(*) FROM pg_available_extensions WHERE name = 'age'")"
+[[ "$actual" == "$HAS_AGE" ]] || { echo "age available: $actual, expected $HAS_AGE" >&2; exit 1; }
+# AGE must stay out of the preload lists: only databases that use it load it.
+[[ "$(psql_c "SELECT (current_setting('shared_preload_libraries') || ',' || current_setting('session_preload_libraries')) ~ '(^|,)\s*age\s*(,|$)'")" == "f" ]] \
+  || { echo "age must not be preloaded" >&2; exit 1; }
 
 echo "==> image manifest"
 docker exec "$NAME" cat /usr/share/evilflowers/manifest.txt
