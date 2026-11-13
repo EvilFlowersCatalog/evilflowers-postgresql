@@ -128,6 +128,7 @@ ORDER BY score DESC LIMIT 20;
 | `pg_partman` | PGDG | no | time/serial partition management, for logs and events |
 | `pg_repack` | PGDG | no | online table and index rebuilds |
 | `hypopg` | PGDG | no | hypothetical indexes |
+| `age` | PGDG (Apache-2.0) | no (per database: `session_preload_libraries`, see README) | Apache AGE property graph and Cypher queries. Not in 19-preview (`"age": false`) |
 | `pg_trgm`, `unaccent`, `btree_gin`, `fuzzystrmatch`, ... | contrib | no | fuzzy search and accent-insensitive Slovak search |
 
 Also installed: **pgBackRest**, for physical backups and point-in-time recovery to MinIO/S3 under compose (see [backups.md](backups.md)).

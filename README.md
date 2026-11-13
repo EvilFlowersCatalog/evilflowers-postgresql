@@ -1,6 +1,6 @@
 # evilflowers-postgresql
 
-PostgreSQL image for the EvilFlowers platform, and reusable for any project that needs it: upstream PostgreSQL with **pgvector**, **ParadeDB pg_search** (BM25) and a curated set of open-source operational extensions, so hybrid dense + lexical search runs inside one database. Multi-arch (amd64 + arm64), signed, rebuilt weekly. It runs under Docker Compose today and under CloudNativePG on Kubernetes later.
+PostgreSQL image for the EvilFlowers platform, and reusable for any project that needs it: upstream PostgreSQL with **pgvector**, **ParadeDB pg_search** (BM25), **Apache AGE** (graph, Cypher) and a curated set of open-source operational extensions, so hybrid dense + lexical search and graph queries run inside one database. Multi-arch (amd64 + arm64), signed, rebuilt weekly. It runs under Docker Compose today and under CloudNativePG on Kubernetes later.
 
 ```
 ghcr.io/evilflowerscatalog/evilflowers-postgresql:18          # stable (default)
@@ -17,9 +17,10 @@ Deploy the immutable `<minor>-<stamp>` tags listed on each GitHub release, for e
 | Base | official [`postgres:<minor>-trixie`](https://hub.docker.com/_/postgres) (Debian 13, PGDG packages), pinned by digest |
 | Vector search | **pgvector 0.8.7**, built from source with portable CPU flags |
 | Full-text search | **ParadeDB pg_search 0.26.4** (BM25 `bm25` index), from the upstream release package; AGPL-3.0, shipped unmodified. Not in 19-preview yet |
+| Graph | **Apache AGE** (Cypher via `ag_catalog.cypher`), PGDG package; Apache-2.0. Not preloaded, enabled per database ([below](#graph-queries-apache-age)). Not in 19-preview yet |
 | Dictionaries | Slovak and Czech hunspell dictionaries + stop lists for `tsvector` search ([below](#full-text-search-dictionaries)) |
 | Preloaded | `pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit` (inactive by default), `pg_search` |
-| Also installed | `pg_partman`, `pg_repack`, `hypopg`, all contrib modules (`pg_trgm`, `unaccent`, `btree_gin`, ...), pgBackRest |
+| Also installed | `pg_partman`, `pg_repack`, `hypopg`, `age`, all contrib modules (`pg_trgm`, `unaccent`, `btree_gin`, ...), pgBackRest |
 | Config | tuned `postgresql.conf` and `/etc/postgresql/conf.d/` for host overrides |
 
 Details and reasoning: [docs/tuning.md](docs/tuning.md).
@@ -86,6 +87,32 @@ Combine with `unaccent` if queries are typed without diacritics.
 ParadeDB `pg_search` has its own tokenizers and a Czech stemmer but no Slovak one. These dictionaries are for `tsvector` search.
 
 **Hungarian** needs nothing from the image: PostgreSQL ships a Snowball stemmer and the `hungarian` configuration (`to_tsvector('hungarian', …)`), with its own stop list. Debian's `hunspell-hu` is not shipped because the ispell template cannot load it: the affix file mixes encodings and relies on Hunspell compounding rules that PostgreSQL does not support.
+
+## Graph queries (Apache AGE)
+
+[Apache AGE](https://age.apache.org/) adds property graphs queried with Cypher, next to pgvector and pg_search in the same database. It is **not** in `shared_preload_libraries`, so databases that do not use it are unaffected. A database that uses it needs three things:
+
+```sql
+-- once, as a superuser (CREATE EXTENSION age requires one)
+CREATE EXTENSION age;
+
+-- per database, so every new session (also through PgBouncer) gets it
+ALTER DATABASE app SET session_preload_libraries = 'age';
+ALTER DATABASE app SET search_path = "$user", public, ag_catalog;
+```
+
+Instead of `session_preload_libraries` a session can run `LOAD 'age'`. That does not survive PgBouncer transaction pooling, because the next transaction may land on another server connection. The database setting does.
+
+`ag_catalog` has to be on `search_path`. Schema-qualifying `ag_catalog.cypher(...)` is **not** enough: `create_graph`, the first `CREATE` of a label and edge `MATCH`es look up AGE's `graphid` operators through `search_path` and fail with `operator class "graphid_ops" does not exist` without it (checked with AGE 1.8.0). Append `ag_catalog` at the end so it does not shadow `public`. Still write `ag_catalog.cypher` and `ag_catalog.agtype` in full, so a query never depends on where in the path they are found.
+
+```sql
+SELECT ag_catalog.create_graph('library');
+SELECT * FROM ag_catalog.cypher('library', $$
+  MATCH (a:Section)-[:DEFINES]->(c:Concept)<-[:DISCUSSES]-(b:Section) RETURN a.id, b.id
+$$) AS (a ag_catalog.agtype, b ag_catalog.agtype);
+```
+
+Graph results join with relational tables through a cast, e.g. `JOIN sections ON sections.id = g.id::text::bigint`. Cypher in AGE does not support relationship-type alternation (`[:A|B]`); use an untyped `[]` or a `UNION`. `tests/smoke.sql` has a working example that runs AGE, pgvector and pg_search in one session.
 
 ## Repository layout
 
