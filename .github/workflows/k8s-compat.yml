@@ -29,14 +29,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build default major
+        # CNPG reads the PostgreSQL major from the image tag, so the tag must
+        # start with it ("evilflowers-postgresql:compat" is an invalid version tag).
         run: |
           major="$(jq -r .default versions.json)"
+          echo "COMPAT_IMAGE=evilflowers-postgresql:${major}-compat" >> "$GITHUB_ENV"
           docker build \
             --build-arg BASE_IMAGE="$(jq -r --arg m "$major" '.majors[$m].base' versions.json)" \
             --build-arg PGVECTOR_VERSION="$(jq -r .pgvector versions.json)" \
             --build-arg PG_SEARCH_VERSION="$(jq -r --arg m "$major" 'if .majors[$m].pg_search == false then "" else .pg_search end' versions.json)" \
             --build-arg EXTENSIONS="$(jq -r --arg m "$major" '.majors[$m] as $v | .extensions | map(select($v[.] != false)) | join(" ")' versions.json)" \
-            -t evilflowers-postgresql:compat .
+            -t "evilflowers-postgresql:${major}-compat" .
 
       - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
@@ -44,7 +47,7 @@ jobs:
           cluster_name: compat
 
       - name: Load image into kind
-        run: kind load docker-image evilflowers-postgresql:compat --name compat
+        run: kind load docker-image "$COMPAT_IMAGE" --name compat
 
       - name: Install CloudNativePG
         run: |
@@ -54,7 +57,7 @@ jobs:
 
       - name: Deploy cluster
         run: |
-          sed 's|imageName: IMAGE|imageName: evilflowers-postgresql:compat|' k8s/cnpg/test/cluster.yaml | kubectl apply -f -
+          sed "s|imageName: IMAGE|imageName: ${COMPAT_IMAGE}|" k8s/cnpg/test/cluster.yaml | kubectl apply -f -
           kubectl wait cluster/compat --for=condition=Ready --timeout=600s
 
       - name: Check extensions and replication
