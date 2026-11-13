@@ -74,10 +74,14 @@ jobs:
             INSERT INTO docs VALUES (1, 'pgvector and BM25'), (2, 'replication');
             CREATE INDEX ON docs USING bm25 (id, body);
             SELECT id, pdb.score(id) FROM docs WHERE body ||| 'bm25';"
-          kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
-            "SELECT count(*) FROM pg_stat_replication" | grep -qx 1
-          kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
-            "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'" | grep -qx 1
+          kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -c \
+            "SELECT application_name, state, sync_state FROM pg_stat_replication"
+          replicas="$(kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
+            "SELECT count(*) FROM pg_stat_replication WHERE state = 'streaming'")"
+          [[ "$replicas" == 1 ]] || { echo "expected 1 streaming replica, got $replicas" >&2; exit 1; }
+          cron="$(kubectl exec "$primary" -c postgres -- psql -v ON_ERROR_STOP=1 -d postgres -Atc \
+            "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'")"
+          [[ "$cron" == 1 ]] || { echo "pg_cron not created in postgres (count $cron)" >&2; exit 1; }
 
       - name: Diagnostics
         if: failure()
