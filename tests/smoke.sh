@@ -96,6 +96,11 @@ actual="$(psql_c "SELECT coalesce(max(default_version), '') FROM pg_available_ex
 
 actual="$(psql_c "SELECT count(*) FROM pg_available_extensions WHERE name = 'age'")"
 [[ "$actual" == "$HAS_AGE" ]] || { echo "age available: $actual, expected $HAS_AGE" >&2; exit 1; }
+# Non-superusers can LOAD only from $libdir/plugins/ (smoke.sql proves it works).
+if (( HAS_AGE )); then
+  docker exec "$NAME" test -e "/usr/lib/postgresql/${major}/lib/plugins/age.so" \
+    || { echo "\$libdir/plugins/age.so missing" >&2; exit 1; }
+fi
 # AGE must stay out of the preload lists: only databases that use it load it.
 [[ "$(psql_c "SELECT (current_setting('shared_preload_libraries') || ',' || current_setting('session_preload_libraries')) ~ '(^|,)\s*age\s*(,|$)'")" == "f" ]] \
   || { echo "age must not be preloaded" >&2; exit 1; }

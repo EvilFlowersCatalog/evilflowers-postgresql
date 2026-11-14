@@ -96,12 +96,20 @@ ParadeDB `pg_search` has its own tokenizers and a Czech stemmer but no Slovak on
 -- once, as a superuser (CREATE EXTENSION age requires one)
 CREATE EXTENSION age;
 
+-- the application role (here app_user), if it is not a superuser
+GRANT CREATE ON DATABASE app TO app_user;      -- create_graph creates a schema per graph
+GRANT USAGE ON SCHEMA ag_catalog TO app_user;  -- create_graph, cypher, agtype
+
 -- per database, so every new session (also through PgBouncer) gets it
-ALTER DATABASE app SET session_preload_libraries = 'age';
+ALTER DATABASE app SET session_preload_libraries = '$libdir/plugins/age';
 ALTER DATABASE app SET search_path = "$user", public, ag_catalog;
 ```
 
-Instead of `session_preload_libraries` a session can run `LOAD 'age'`. That does not survive PgBouncer transaction pooling, because the next transaction may land on another server connection. The database setting does.
+**Load path.** PostgreSQL lets a non-superuser `LOAD` only libraries under `$libdir/plugins/`, so the image ships `age.so` there too (a symlink to `$libdir/age.so`, the same file, loaded once). Use `'$libdir/plugins/age'` everywhere: `LOAD 'age'` fails for an application role with `access to library "age" is not allowed`. `CREATE EXTENSION age` is unchanged.
+
+**Grants.** The two grants above are the minimum, proven by `tests/smoke.sql` as a non-superuser: `create_graph`, Cypher `CREATE` and `MATCH`, and new labels then work for that role, which owns the graphs it creates. Without `USAGE` on `ag_catalog`, `create_graph` does not exist; without `CREATE` on the database it fails with a misleading `graph name is invalid`.
+
+Instead of `session_preload_libraries` a session can run `LOAD '$libdir/plugins/age'`. That does not survive PgBouncer transaction pooling, because the next transaction may land on another server connection, unless it is repeated in every transaction. The database setting does.
 
 `ag_catalog` has to be on `search_path`. Schema-qualifying `ag_catalog.cypher(...)` is **not** enough: `create_graph`, the first `CREATE` of a label and edge `MATCH`es look up AGE's `graphid` operators through `search_path` and fail with `operator class "graphid_ops" does not exist` without it (checked with AGE 1.8.0). Append `ag_catalog` at the end so it does not shadow `public`. Still write `ag_catalog.cypher` and `ag_catalog.agtype` in full, so a query never depends on where in the path they are found.
 
