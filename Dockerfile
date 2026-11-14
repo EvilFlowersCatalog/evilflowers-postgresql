@@ -102,14 +102,23 @@ COPY --from=tsearch /out/usr/ /usr/
 # PGDG keeps only the current package versions, so they are not pinned. CI
 # records what was installed in /usr/share/evilflowers/manifest.txt.
 # Apache AGE (postgresql-<major>-age, Apache-2.0) is one of them. It needs no
-# shared_preload_libraries entry: a session runs LOAD 'age', or a database sets
-# session_preload_libraries, so databases that do not use it are unaffected.
+# shared_preload_libraries entry: a session runs LOAD '$libdir/plugins/age', or
+# a database sets session_preload_libraries = '$libdir/plugins/age', so
+# databases that do not use it are unaffected. PostgreSQL lets a non-superuser
+# LOAD only libraries under $libdir/plugins/, so age.so is symlinked there; the
+# extension's own functions keep referring to $libdir/age (same file, loaded
+# once). The path is spelled out because pg_config may belong to another major.
 # hadolint ignore=DL3008
 RUN apt-get update \
  && pkgs=(ca-certificates pgbackrest) \
  && for ext in ${EXTENSIONS}; do pkgs+=("postgresql-${PG_MAJOR}-${ext}"); done \
  && apt-get install -y --no-install-recommends "${pkgs[@]}" \
  && rm -rf /var/lib/apt/lists/* \
+ && if [[ " ${EXTENSIONS} " == *" age "* ]]; then \
+      mkdir -p "/usr/lib/postgresql/${PG_MAJOR}/lib/plugins" \
+      && ln -s ../age.so "/usr/lib/postgresql/${PG_MAJOR}/lib/plugins/age.so" \
+      && test -e "/usr/lib/postgresql/${PG_MAJOR}/lib/plugins/age.so"; \
+    fi \
  && mkdir -p /usr/share/evilflowers \
  && { echo "postgresql $(postgres --version | awk '{print $3}')"; \
       echo "pgvector ${PGVECTOR_VERSION}"; \

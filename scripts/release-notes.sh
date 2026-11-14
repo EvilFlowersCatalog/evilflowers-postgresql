@@ -37,6 +37,9 @@ echo "- pgvector $(jq -r '.pgvector' versions.json) (built from source)"
 echo "- ParadeDB pg_search $(jq -r '.pg_search' versions.json) (upstream release package, AGPL-3.0); not in: $(jq -r '[.majors | to_entries[] | select(.value.pg_search == false) | .key] | if length == 0 then "none" else join(", ") end' versions.json)"
 echo "- PGDG extensions: $(jq -r '.majors as $ms | .extensions | map(. as $e | "postgresql-<major>-" + $e
   + ([$ms | to_entries[] | select(.value[$e] == false) | .key] | if length == 0 then "" else " (not in: " + join(", ") + ")" end)) | join(", ")' versions.json)"
+if jq -e '.extensions | index("age")' versions.json >/dev/null; then
+  echo "- Apache AGE is also in \`\$libdir/plugins/\`: a non-superuser role loads it with \`LOAD '\$libdir/plugins/age'\` or \`session_preload_libraries = '\$libdir/plugins/age'\` (\`LOAD 'age'\` needs a superuser); grants in README.md"
+fi
 echo "- Full-text search dictionaries (Slovak \`sk_sk\`, Czech \`cs_cz\`): $(jq -r '.dictionaries.hunspell | join(", ")' versions.json) from Debian trixie, stop lists from $(jq -r '[.dictionaries.stopwords[] | split("@") | .[0] + "@" + .[1][0:7]] | join(", ")' versions.json)"
 echo "- Base images:"
 jq -r '.majors | to_entries[] | "  - \(.key): `\(.value.base)`"' versions.json

@@ -228,6 +228,40 @@ BEGIN
 END $$;
 \endif
 SELECT ag_catalog.drop_graph('smoke_graph', true);
+
+\echo '== Apache AGE as a non-superuser (the grants documented in README.md)'
+-- A non-superuser may LOAD only libraries under $libdir/plugins/. These two
+-- grants are the minimum: without USAGE create_graph is not found, without
+-- CREATE on the database it fails with "graph name is invalid".
+CREATE ROLE smoke_app LOGIN;
+GRANT CREATE ON DATABASE smoke TO smoke_app;
+GRANT USAGE ON SCHEMA ag_catalog TO smoke_app;
+-- A fresh backend, so the library is not already loaded by the superuser above.
+\connect smoke smoke_app
+BEGIN;
+LOAD '$libdir/plugins/age';
+SET LOCAL search_path = ag_catalog, "$user", public;
+SELECT create_graph('smoke_app_graph');
+SELECT * FROM cypher('smoke_app_graph', $$
+  CREATE (:Concept {term: 'x'})-[:MENTIONS]->(:Section)
+$$) AS (v agtype);
+SELECT v::text = '2' AS age_app_ok
+FROM cypher('smoke_app_graph', $$ MATCH (n) RETURN count(n) $$) AS (v agtype) \gset
+COMMIT;
+\if :age_app_ok
+\else
+\echo 'Cypher as a non-superuser did not see 2 nodes'
+SELECT 1/0;
+\endif
+-- The unrestricted name must stay refused: consumers load the plugins path.
+DO $$
+BEGIN
+  LOAD 'age';
+  RAISE EXCEPTION 'LOAD ''age'' succeeded for a non-superuser';
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'LOAD ''age'' refused for a non-superuser, as expected';
+END $$;
+\connect smoke postgres
 \endif
 
 \echo '== hypopg'
@@ -238,5 +272,6 @@ SELECT count(*) = 1 AS hypopg_ok FROM hypopg_create_index('CREATE INDEX ON items
 SELECT cron.schedule_in_database('smoke-job', '*/5 * * * *', 'SELECT 1', 'smoke') > 0 AS scheduled;
 SELECT cron.unschedule('smoke-job');
 DROP DATABASE smoke WITH (FORCE);
+DROP ROLE IF EXISTS smoke_app;
 
 \echo 'SMOKE OK'
